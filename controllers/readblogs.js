@@ -11,7 +11,7 @@ const readblogs = async (req, res) => {
     const token = authHeader && authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
     if (token) {
       try {
-        const decoded = jwt.verify(token, "blogifysecretkey");
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || "blogifysecretkey");
         username = decoded.userId;
       } catch (err) {
         username = null;

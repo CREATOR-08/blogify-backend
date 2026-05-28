@@ -83,7 +83,7 @@ const googleCallback = async (req, res) => {
     }
 
     const user = existingUser.rows[0];
-    const token = jwt.sign({ userId: user.username }, "blogifysecretkey", { expiresIn: "1h" });
+    const token = jwt.sign({ userId: user.username }, process.env.JWT_SECRET || "blogifysecretkey", { expiresIn: "1h" });
     res.redirect(`${process.env.FRONTEND_URL}/login?token=${token}`);
   } catch (error) {
     console.error("OAuth error:", error);

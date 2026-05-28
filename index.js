@@ -11,7 +11,7 @@ const readblogsRouter = require("./routes/readblogs")
 const { googleAuth, googleCallback } = require("./controllers/googleAuth")
 const pool = require("./models/usermodel");
 app.use(cors({
-  origin: "blogify-frontend-sigma.vercel.app",   // your frontend URL
+  origin: process.env.FRONTEND_URL || "https://blogify-frontend-sigma.vercel.app",
   credentials: true
 }))
 app.use(express.json())
@@ -73,8 +73,9 @@ const startServer = async () => {
     )`);
     console.log("Ensured preferences table exists");
 
-    app.listen(8000, () => {
-      console.log("Server running on port 8000");
+    const PORT = process.env.PORT || 8000;
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
     });
   } catch (err) {
     console.error("Failed to initialize database:", err);

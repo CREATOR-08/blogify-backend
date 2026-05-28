@@ -43,7 +43,7 @@ const switchAccount = async (req, res) => {
       return res.status(401).json({ message: "Invalid password for the selected account." });
     }
 
-    const token = jwt.sign({ userId: targetUser.username }, "blogifysecretkey", {
+    const token = jwt.sign({ userId: targetUser.username }, process.env.JWT_SECRET || "blogifysecretkey", {
       expiresIn: "1d",
     });
 

@@ -26,7 +26,7 @@ const logincontroller = async (req, res) => {
     }
     //give all the posts of the logged in user
     const posts = await pool.query("SELECT * FROM posts WHERE name=$1", [name]);
-    const token = jwt.sign({ userId: name }, "blogifysecretkey", {
+    const token = jwt.sign({ userId: name }, process.env.JWT_SECRET || "blogifysecretkey", {
       expiresIn: "1d",
     });
 
