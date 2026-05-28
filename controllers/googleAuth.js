@@ -9,7 +9,7 @@ const crypto = require("crypto");
 const google = new Google(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
-  "http://localhost:8000/auth/google/callback"
+  `${process.env.BACKEND_URL}/auth/google/callback`
 );
 // console.log("GOOGLE_CLIENT_ID=", process.env.GOOGLE_CLIENT_ID);
 // console.log("GOOGLE_CLIENT_SECRET=", process.env.GOOGLE_CLIENT_SECRET ? "loaded" : "missing");
@@ -78,13 +78,13 @@ const googleCallback = async (req, res) => {
 
     if (existingUser.rows.length === 0) {
       return res.redirect(
-        `http://localhost:5173/login?googleError=${encodeURIComponent("No account found for this Google email. Please sign up first.")}`
+        `${process.env.FRONTEND_URL}/login?googleError=${encodeURIComponent("No account found for this Google email. Please sign up first.")}`
       );
     }
 
     const user = existingUser.rows[0];
     const token = jwt.sign({ userId: user.username }, "blogifysecretkey", { expiresIn: "1h" });
-    res.redirect(`http://localhost:5173/login?token=${token}`);
+    res.redirect(`${process.env.FRONTEND_URL}/login?token=${token}`);
   } catch (error) {
     console.error("OAuth error:", error);
     // log response body if available (fetch/HTTP libs may expose it differently)

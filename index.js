@@ -11,7 +11,7 @@ const readblogsRouter = require("./routes/readblogs")
 const { googleAuth, googleCallback } = require("./controllers/googleAuth")
 const pool = require("./models/usermodel");
 app.use(cors({
-  origin: "http://localhost:5173",   // your frontend URL
+  origin: "blogify-frontend-sigma.vercel.app",   // your frontend URL
   credentials: true
 }))
 app.use(express.json())
