@@ -1,84 +1,123 @@
-console.log("INDEX LOADED")
 require("dotenv").config();
-const express = require("express")
-const app = express()
-const cors=require("cors")
-const signup=require("./routes/signup")
-const userRouter = require("./routes/user")
-const cookieParser = require('cookie-parser')
-const postrouter = require("./routes/myposts")
-const readblogsRouter = require("./routes/readblogs")
-const { googleAuth, googleCallback } = require("./controllers/googleAuth")
+const express = require("express");
+const cors = require("cors");
+const cookieParser = require("cookie-parser");
+
+const signup = require("./routes/signup");
+const userRouter = require("./routes/user");
+const postrouter = require("./routes/myposts");
+const readblogsRouter = require("./routes/readblogs");
+const { googleAuth, googleCallback } = require("./controllers/googleAuth");
 const pool = require("./models/usermodel");
+
+const app = express();
+
+// Middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "https://blogify-frontend-sigma.vercel.app",
-  credentials: true
-}))
-app.use(express.json())
-app.use(cookieParser())
+  origin: process.env.FRONTEND_URL || "http://localhost:3000",
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
 
-app.use("/api",signup)
-app.use("/api/user", userRouter)
-app.use("/api", postrouter)
-app.use("/api", readblogsRouter)
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
-app.get("/auth/google", googleAuth)
-app.get("/auth/google/callback", googleCallback)
+// Routes
+app.use("/api", signup);
+app.use("/api/user", userRouter);
+app.use("/api", postrouter);
+app.use("/api", readblogsRouter);
 
+// Google OAuth routes
+app.get("/auth/google", googleAuth);
+app.get("/auth/google/callback", googleCallback);
 
-
-
+// Health check
 app.get("/", (req, res) => {
-  res.send("this is backend for the blogify app");
+  res.status(200).json({ 
+    message: "Blogify backend is running",
+    status: "healthy"
+  });
 });
 
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: "Route not found" });
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error("Unhandled error:", err);
+  res.status(err.status || 500).json({
+    error: err.message || "Internal server error"
+  });
+});
+
+// Initialize database and start server
 const startServer = async () => {
   try {
-    await pool.query(`CREATE TABLE IF NOT EXISTS BloggerData (
-      id SERIAL PRIMARY KEY,
-      username TEXT UNIQUE NOT NULL,
-      email TEXT NOT NULL,
-      password TEXT NOT NULL,
-      created_at TIMESTAMP DEFAULT NOW()
-    )`);
-    console.log("Ensured BloggerData table exists");
-    // Ensure posts table exists
-    await pool.query(`CREATE TABLE IF NOT EXISTS posts (
-      id BIGSERIAL PRIMARY KEY,
-      name TEXT REFERENCES BloggerData(username) ON DELETE CASCADE,
-      title TEXT NOT NULL,
-      content TEXT NOT NULL,
-      created_at TIMESTAMP DEFAULT NOW(),
-      updated_at TIMESTAMP,
-      tags TEXT[]
-    )`);
-    console.log("Ensured posts table exists");
+    console.log("Initializing database...");
+    
+    // Create BloggerData table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS BloggerData (
+        id SERIAL PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL,
+        email TEXT NOT NULL,
+        password TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    console.log("✓ BloggerData table ready");
 
-    // Ensure stats table exists
-    await pool.query(`CREATE TABLE IF NOT EXISTS stats (
-      name TEXT PRIMARY KEY,
-      total_likes INT DEFAULT 0,
-      subscribers_count INT DEFAULT 0,
-      badges TEXT[] DEFAULT ARRAY[]::text[]
-    )`);
-    console.log("Ensured stats table exists");
+    // Create posts table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS posts (
+        id BIGSERIAL PRIMARY KEY,
+        name TEXT REFERENCES BloggerData(username) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP,
+        tags TEXT[] DEFAULT ARRAY[]::TEXT[]
+      )
+    `);
+    console.log("✓ Posts table ready");
 
-    // Ensure preferences table exists (basic shape)
-    await pool.query(`CREATE TABLE IF NOT EXISTS preferences (
-      name TEXT PRIMARY KEY,
-      liked INT[] DEFAULT ARRAY[]::INT[],
-      subscribed_blogger TEXT[] DEFAULT ARRAY[]::TEXT[],
-      viewed INT[] DEFAULT ARRAY[]::INT[],
-      searched TEXT[] DEFAULT ARRAY[]::TEXT[]
-    )`);
-    console.log("Ensured preferences table exists");
+    // Create stats table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS stats (
+        name TEXT PRIMARY KEY REFERENCES BloggerData(username) ON DELETE CASCADE,
+        total_likes INT DEFAULT 0,
+        subscribers_count INT DEFAULT 0,
+        badges TEXT[] DEFAULT ARRAY[]::TEXT[]
+      )
+    `);
+    console.log("✓ Stats table ready");
 
+    // Create preferences table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS preferences (
+        name TEXT PRIMARY KEY REFERENCES BloggerData(username) ON DELETE CASCADE,
+        liked INT[] DEFAULT ARRAY[]::INT[],
+        subscribed_blogger TEXT[] DEFAULT ARRAY[]::TEXT[],
+        viewed INT[] DEFAULT ARRAY[]::INT[],
+        searched TEXT[] DEFAULT ARRAY[]::TEXT[]
+      )
+    `);
+    console.log("✓ Preferences table ready");
+
+    // Start server
     const PORT = process.env.PORT || 8000;
     app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
+      console.log(`\n🚀 Blogify backend server running on port ${PORT}`);
+      console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
+      console.log(`Frontend URL: ${process.env.FRONTEND_URL || "http://localhost:3000"}\n`);
     });
   } catch (err) {
-    console.error("Failed to initialize database:", err);
+    console.error("❌ Failed to initialize server:", err.message);
     process.exit(1);
   }
 };

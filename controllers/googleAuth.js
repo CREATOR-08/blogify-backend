@@ -2,105 +2,158 @@ const { Google } = require("arctic");
 const jwt = require("jsonwebtoken");
 const pool = require("../models/usermodel");
 const crypto = require("crypto");
+const bcrypt = require("bcrypt");
 
-
-
-
+// Initialize Google OAuth client
 const google = new Google(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
   `${process.env.BACKEND_URL}/auth/google/callback`
 );
-// console.log("GOOGLE_CLIENT_ID=", process.env.GOOGLE_CLIENT_ID);
-// console.log("GOOGLE_CLIENT_SECRET=", process.env.GOOGLE_CLIENT_SECRET ? "loaded" : "missing");
 
+// Step 1: Redirect to Google login
 const googleAuth = async (req, res) => {
-  console.log("googleAuth entered");
+  try {
+    console.log("[Google Auth] Starting OAuth flow");
 
-  const state = crypto.randomUUID();
-  console.log("state created");
+    const state = crypto.randomUUID();
+    const codeVerifier = crypto.randomBytes(32).toString("hex");
 
-  const codeVerifier = crypto.randomBytes(32).toString("hex");
-  console.log("codeVerifier created");
+    const url = google.createAuthorizationURL(
+      state,
+      codeVerifier,
+      ["openid", "profile", "email"]
+    );
 
-  console.log("client id:", process.env.GOOGLE_CLIENT_ID);
-  console.log(
-    "secret:",
-    process.env.GOOGLE_CLIENT_SECRET ? "loaded" : "missing"
-  );
+    // Store state and verifier in httpOnly cookies
+    res.cookie("oauth_state", state, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 1000 * 60 * 10 // 10 minutes
+    });
 
-  const url = google.createAuthorizationURL(
-    state,
-    codeVerifier,
-    ["openid", "profile", "email"]
-  );
+    res.cookie("code_verifier", codeVerifier, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 1000 * 60 * 10 // 10 minutes
+    });
 
-  console.log("URL CREATED");
-  console.log(url.toString());
-
-  res.cookie("oauth_state", state, {
-    httpOnly: true,
-    secure: false
-  });
-
-  res.cookie("code_verifier", codeVerifier, {
-    httpOnly: true,
-    secure: false
-  });
-
-  res.redirect(url.toString())
+    console.log("[Google Auth] Redirecting to Google");
+    res.redirect(url.toString());
+  } catch (error) {
+    console.error("[Google Auth] Error:", error);
+    res.status(500).json({ 
+      error: "Failed to initiate Google login",
+      message: error.message 
+    });
+  }
 };
 
+// Step 2: Handle Google callback
 const googleCallback = async (req, res) => {
   const code = req.query.code;
   const state = req.query.state;
   const storedState = req.cookies.oauth_state;
   const codeVerifier = req.cookies.code_verifier;
 
+  console.log("[Google Callback] Received:", { code: !!code, state: !!state });
+
+  // Validate state and code verifier
   if (!code || !state || !storedState || state !== storedState || !codeVerifier) {
-    return res.status(400).json({ error: "Invalid OAuth state or code verifier" });
+    console.error("[Google Callback] State/verifier validation failed");
+    return res.redirect(
+      `${process.env.FRONTEND_URL}/login?error=${encodeURIComponent("Authentication failed: Invalid state")}`
+    );
   }
 
   try {
+    // Exchange code for tokens
+    console.log("[Google Callback] Validating authorization code");
     const tokens = await google.validateAuthorizationCode(code, codeVerifier);
+    
+    // Fetch user info from Google
+    console.log("[Google Callback] Fetching user info");
     const response = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
       headers: {
         Authorization: `Bearer ${tokens.accessToken()}`,
       },
     });
-    const googleUser = await response.json();
 
-    // Find one existing BloggerData user by email.
+    if (!response.ok) {
+      throw new Error(`Google API error: ${response.status}`);
+    }
+
+    const googleUser = await response.json();
+    console.log("[Google Callback] Google user:", googleUser.email);
+
+    // Check if user exists
     const existingUser = await pool.query(
-      "SELECT username FROM BloggerData WHERE email = $1 ORDER BY id DESC LIMIT 1",
+      "SELECT username, email FROM BloggerData WHERE email = $1",
       [googleUser.email]
     );
 
-    if (existingUser.rows.length === 0) {
-      return res.redirect(
-        `${process.env.FRONTEND_URL}/login?googleError=${encodeURIComponent("No account found for this Google email. Please sign up first.")}`
-      );
-    }
-
-    const user = existingUser.rows[0];
-    const token = jwt.sign({ userId: user.username }, process.env.JWT_SECRET || "blogifysecretkey", { expiresIn: "1h" });
-    res.redirect(`${process.env.FRONTEND_URL}/login?token=${token}`);
-  } catch (error) {
-    console.error("OAuth error:", error);
-    // log response body if available (fetch/HTTP libs may expose it differently)
-    try {
-      if (error.response) {
-        console.error("Error response status:", error.response.status);
-        if (typeof error.response.text === "function") {
-          const bodyText = await error.response.text();
-          console.error("Error response body:", bodyText);
-        }
+    let user;
+    
+    if (existingUser.rows.length > 0) {
+      // User exists - login
+      console.log("[Google Callback] User exists, logging in");
+      user = existingUser.rows[0];
+    } else {
+      // User doesn't exist - auto-signup with Google
+      console.log("[Google Callback] New user, creating account");
+      
+      // Generate username from email
+      const baseUsername = googleUser.email.split("@")[0];
+      let username = baseUsername;
+      let counter = 1;
+      
+      // Ensure unique username
+      while (true) {
+        const checkUsername = await pool.query(
+          "SELECT username FROM BloggerData WHERE username = $1",
+          [username]
+        );
+        if (checkUsername.rows.length === 0) break;
+        username = `${baseUsername}${counter++}`;
       }
-    } catch (logErr) {
-      console.error("Failed to read error response body:", logErr);
+
+      // Create a temporary password (user won't need it for Google auth)
+      const tempPassword = await bcrypt.hash(crypto.randomBytes(16).toString("hex"), 10);
+      
+      // Insert new user
+      await pool.query(
+        "INSERT INTO BloggerData(username, email, password) VALUES($1, $2, $3)",
+        [username, googleUser.email, tempPassword]
+      );
+
+      user = { username, email: googleUser.email };
+      console.log("[Google Callback] New user created:", username);
     }
 
-    res.status(500).json({ error: "OAuth failed", message: error.message });
+    // Generate JWT token
+    const token = jwt.sign(
+      { userId: user.username },
+      process.env.JWT_SECRET || "blogifysecretkey",
+      { expiresIn: "7d" }
+    );
+
+    // Clear OAuth cookies
+    res.clearCookie("oauth_state");
+    res.clearCookie("code_verifier");
+
+    // Redirect to frontend with token
+    const redirectUrl = `${process.env.FRONTEND_URL}/login?token=${token}&user=${encodeURIComponent(user.username)}&googleAuth=true`;
+    console.log("[Google Callback] Redirecting to frontend");
+    res.redirect(redirectUrl);
+
+  } catch (error) {
+    console.error("[Google Callback] Error:", error.message);
+    
+    // Redirect to login with error
+    const errorUrl = `${process.env.FRONTEND_URL}/login?error=${encodeURIComponent("Google authentication failed: " + error.message)}`;
+    res.redirect(errorUrl);
   }
 };
 
