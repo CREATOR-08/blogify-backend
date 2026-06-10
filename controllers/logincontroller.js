@@ -59,6 +59,7 @@ const logincontroller = async (req, res) => {
     res.status(200).json({
       message: "Login successful",
       token,
+      username: result.rows[0].username,
       user: {
         username: result.rows[0].username
       },

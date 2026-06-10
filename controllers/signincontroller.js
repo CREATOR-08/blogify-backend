@@ -44,6 +44,7 @@ const signincontroller = async (req, res) => {
     res.status(201).json({
       message: "Signup successful",
       token,
+      username: name,
       user: {
         username: name,
         email: email

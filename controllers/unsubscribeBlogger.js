@@ -73,18 +73,13 @@ const unsubscribeBlogger = async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
-};
-
-module.exports = unsubscribeBlogger;
-
-    res.json({
+  res.json({
       message: "Unsubscribed successfully.",
       stats: updatedStats.rows ? updatedStats.rows[0] : updatedStats,
       isSubscribed: false
     });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+
 };
 
 module.exports = unsubscribeBlogger;
+

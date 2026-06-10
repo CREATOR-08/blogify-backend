@@ -1,4 +1,8 @@
-require("dotenv").config();
+const path = require("path");
+const dotenv = require("dotenv");
+
+dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, "../.env"), override: false });
 const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
@@ -7,6 +11,7 @@ const signup = require("./routes/signup");
 const userRouter = require("./routes/user");
 const postrouter = require("./routes/myposts");
 const readblogsRouter = require("./routes/readblogs");
+const aiRouter = require("./routes/ai");
 const { googleAuth, googleCallback } = require("./controllers/googleAuth");
 const pool = require("./models/usermodel");
 
@@ -29,6 +34,7 @@ app.use("/api", signup);
 app.use("/api/user", userRouter);
 app.use("/api", postrouter);
 app.use("/api", readblogsRouter);
+app.use("/api", aiRouter);
 
 // Google OAuth routes
 app.get("/auth/google", googleAuth);
