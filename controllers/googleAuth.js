@@ -11,6 +11,14 @@ const google = new Google(
   `${process.env.BACKEND_URL}/auth/google/callback`
 );
 
+console.log(
+  "Callback URL:",
+  `${process.env.BACKEND_URL}/auth/google/callback`
+);
+console.log("FRONTEND_URL =", process.env.FRONTEND_URL);
+console.log("BACKEND_URL =", process.env.BACKEND_URL);
+
+
 // Step 1: Redirect to Google login
 const googleAuth = async (req, res) => {
   try {
